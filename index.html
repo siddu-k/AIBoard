@@ -10,56 +10,26 @@ html,body{
   margin:0; height:100%; overflow:hidden; font-family:system-ui,sans-serif;
   background:#ddd;
 }
-
 canvas{
-  position:fixed;
-  inset:0;
-  width:100%;
-  height:100%;
-  background:white;
-  touch-action:none;
-  cursor: crosshair;
+  position:fixed; inset:0; width:100%; height:100%;
+  background:white; touch-action:none; cursor:crosshair;
 }
-
 .menu-btn{
-  position:fixed;
-  top:10px;
-  right:12px;
-  z-index:99;
-  width:40px;
-  height:40px;
-  border-radius:50%;
-  border:none;
-  background:#000;
-  color:#fff;
-  font-size:20px;
-  cursor:pointer;
+  position:fixed; top:10px; right:12px; z-index:99;
+  width:40px; height:40px; border-radius:50%;
+  border:none; background:black; color:white;
+  font-size:20px; cursor:pointer;
 }
-
 .menu{
-  position:fixed;
-  top:60px;
-  right:12px;
-  background:#fff;
-  border-radius:12px;
-  box-shadow:0 4px 12px rgba(0,0,0,.2);
-  padding:10px;
-  width:180px;
-  display:none;
-  z-index:99;
+  position:fixed; top:60px; right:12px; background:white;
+  border-radius:12px; box-shadow:0 4px 12px rgba(0,0,0,..2);
+  padding:10px; width:180px; display:none; z-index:99;
 }
-
-.menu label{
-  display:block;
-  margin-bottom:8px;
-  font-size:13px;
-}
+.menu label{ display:block; font-size:13px; margin-bottom:8px; }
 .menu input,.menu select,.menu button{
-  width:100%;
-  margin-top:4px;
+  width:100%; margin-top:4px;
 }
 .menu button{ padding:6px; }
-
 </style>
 </head>
 
@@ -74,19 +44,15 @@ canvas{
       <option value="eraser">Eraser</option>
     </select>
   </label>
-
   <label>Pen Color
     <input type="color" id="color" value="#000000">
   </label>
-
   <label>Pen Size
     <input type="range" id="size" min="2" max="20" value="4">
   </label>
-
   <label>Canvas Color
     <input type="color" id="bg" value="#ffffff">
   </label>
-
   <button id="fullscreen">Fullscreen</button>
   <button id="clear">Clear</button>
 </div>
@@ -95,20 +61,20 @@ canvas{
 
 <script>
 (()=>{
-const canvas=document.getElementById("board");
-const ctx=canvas.getContext("2d");
-const menuBtn=document.querySelector(".menu-btn");
-const menu=document.querySelector(".menu");
+const canvas = document.getElementById("board");
+const ctx = canvas.getContext("2d");
+const menuBtn = document.querySelector(".menu-btn");
+const menu = document.querySelector(".menu");
 
-menuBtn.onclick=()=> menu.style.display = 
-  menu.style.display==="block" ? "none":"block";
+menuBtn.onclick = () => menu.style.display =
+  menu.style.display === "block" ? "none" : "block";
 
-const tool=document.getElementById("tool");
-const color=document.getElementById("color");
-const size=document.getElementById("size");
-const bg=document.getElementById("bg");
-const clearBtn=document.getElementById("clear");
-const fullscreenBtn=document.getElementById("fullscreen");
+const tool = document.getElementById("tool");
+const color = document.getElementById("color");
+const size = document.getElementById("size");
+const bg = document.getElementById("bg");
+const clearBtn = document.getElementById("clear");
+const fullscreenBtn = document.getElementById("fullscreen");
 
 let strokes=[], current=null;
 let panX=0, panY=0;
@@ -116,22 +82,23 @@ let pointers=new Map();
 let isPan=false, startMid={x:0,y:0}, panStart={x:0,y:0};
 let drawId=null;
 
-// PC double-click drag pan
-let mousePan=false, mouseStart={x:0,y:0}, panMouse={x:0,y:0};
+// ✅ MOBILE DOUBLE TAP PAN
+let lastTap=0, tapTimeout=null, doubleTap=false;
+let dtStart={x:0,y:0}, panDT={x:0,y:0};
 
 function resize(){
-  canvas.width=innerWidth;
-  canvas.height=innerHeight;
+  canvas.width = innerWidth;
+  canvas.height = innerHeight;
   redraw();
 }
-window.addEventListener("resize",resize);
+window.addEventListener("resize", resize);
 resize();
 
-bg.oninput=()=> canvas.style.background = bg.value;
+bg.oninput = () => canvas.style.background = bg.value;
 
 function world(e){
   const r=canvas.getBoundingClientRect();
-  return{x:e.clientX-r.left-panX,y:e.clientY-r.top-panY};
+  return {x:e.clientX-r.left-panX, y:e.clientY-r.top-panY};
 }
 
 function redraw(){
@@ -140,8 +107,10 @@ function redraw(){
   ctx.translate(panX,panY);
   for(const s of strokes){
     ctx.beginPath();
-    ctx.globalCompositeOperation = s.tool==="eraser"?"destination-out":"source-over";
-    ctx.lineWidth=s.size; ctx.lineCap="round";
+    ctx.globalCompositeOperation =
+      s.tool==="eraser"?"destination-out":"source-over";
+    ctx.lineWidth=s.size;
+    ctx.lineCap="round";
     ctx.strokeStyle=s.color;
     ctx.moveTo(s.points[0].x,s.points[0].y);
     for(const p of s.points) ctx.lineTo(p.x,p.y);
@@ -152,37 +121,60 @@ function redraw(){
 }
 
 function mid(){
-  const a=[...pointers.values()];
-  return {x:(a[0].x+a[1].x)/2,y:(a[0].y+a[1].y)/2};
+  const p=[...pointers.values()];
+  return {x:(p[0].x+p[1].x)/2, y:(p[0].y+p[1].y)/2};
 }
 
-// ▶ TOUCH / PEN
+// POINTER DOWN
 canvas.onpointerdown = e => {
+  const now = Date.now();
+  if(now-lastTap < 300){
+    doubleTap = true;
+    dtStart = {x:e.clientX,y:e.clientY};
+    panDT = {x:panX,y:panY};
+    drawId = null;
+  } else {
+    doubleTap=false;
+  }
+  lastTap = now;
+
   pointers.set(e.pointerId,{x:e.clientX,y:e.clientY});
 
   if(pointers.size===2){
     isPan=true;
-    drawId=null;
     panStart={x:panX,y:panY};
     startMid=mid();
-  }
-  else{
-    drawId=e.pointerId;
+    drawId = null;
+  } else if(!doubleTap){
+    drawId = e.pointerId;
     const p=world(e);
-    current={tool:tool.value,color:color.value,size:+size.value,points:[p]};
+    current = {
+      tool:tool.value,
+      color:color.value,
+      size:+size.value,
+      points:[p]
+    };
     strokes.push(current);
     redraw();
   }
 };
 
+// POINTER MOVE
 canvas.onpointermove = e => {
   if(!pointers.has(e.pointerId)) return;
   pointers.set(e.pointerId,{x:e.clientX,y:e.clientY});
 
+  if(doubleTap){
+    panX = panDT.x + (e.clientX - dtStart.x);
+    panY = panDT.y + (e.clientY - dtStart.y);
+    redraw();
+    return;
+  }
+
   if(isPan && pointers.size>=2){
     const m=mid();
-    panX = panStart.x + (m.x - startMid.x);
-    panY = panStart.y + (m.y - startMid.y);
+    panX = panStart.x + (m.x-startMid.x);
+    panY = panStart.y + (m.y-startMid.y);
     redraw();
   }
 
@@ -192,47 +184,27 @@ canvas.onpointermove = e => {
   }
 };
 
+// END POINTER
 function end(e){
   pointers.delete(e.pointerId);
   if(pointers.size<2) isPan=false;
-  if(drawId===e.pointerId){
-    current=null; drawId=null;
-  }
+  doubleTap=false;
+  if(drawId===e.pointerId){ current=null; drawId=null; }
 }
 ["pointerup","pointercancel","pointerleave","pointerout"].forEach(ev=>{
   canvas.addEventListener(ev,end);
 });
 
-// ▶ DOUBLE-CLICK + DRAG PAN FOR MOUSE
-canvas.ondblclick = e => {
-  mousePan=true;
-  mouseStart={x:e.clientX,y:e.clientY};
-  panMouse={x:panX,y:panY};
-  canvas.style.cursor="move";
-};
+// BUTTONS
+clearBtn.onclick = () => {strokes=[]; redraw();};
 
-canvas.onmousemove = e =>{
-  if(!mousePan) return;
-  panX = panMouse.x + (e.clientX - mouseStart.x);
-  panY = panMouse.y + (e.clientY - mouseStart.y);
-  redraw();
-};
-
-canvas.onmouseup = ()=>{ mousePan=false; canvas.style.cursor="crosshair"; };
-canvas.onmouseleave = ()=> mousePan=false;
-
-// ▶ MENU BUTTONS
-clearBtn.onclick=()=>{ strokes=[]; redraw(); };
-
-fullscreenBtn.onclick=()=>{
+fullscreenBtn.onclick = () => {
   if(!document.fullscreenElement) document.documentElement.requestFullscreen();
   else document.exitFullscreen();
 };
-document.addEventListener("fullscreenchange",resize);
+document.addEventListener("fullscreenchange", resize);
 
-// disable right-click
-canvas.oncontextmenu=e=>e.preventDefault();
-
+canvas.oncontextmenu = e => e.preventDefault();
 })();
 </script>
 
