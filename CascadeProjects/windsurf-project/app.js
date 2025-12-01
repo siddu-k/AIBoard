@@ -23,6 +23,9 @@ document.addEventListener('DOMContentLoaded', () => {
     const loadBtn = document.getElementById('load');
     const fileInput = document.getElementById('file-input');
     const textInput = document.getElementById('text-input');
+    const canvasColorPalette = document.getElementById('canvas-color-palette');
+    const paletteToggle = document.getElementById('palette-toggle');
+    const paletteColors = document.getElementById('palette-colors');
     
     // Set initial active tool and state
     let currentTool = 'pen';
@@ -517,6 +520,51 @@ document.addEventListener('DOMContentLoaded', () => {
     // Initialize active color button
     updateActiveColorButton();
     
+    // Canvas color palette handlers
+    const canvasColorButtons = document.querySelectorAll('.canvas-color-btn');
+    
+    paletteToggle.addEventListener('click', (e) => {
+        e.stopPropagation();
+        canvasColorPalette.classList.toggle('expanded');
+    });
+    
+    // Close palette when clicking elsewhere
+    document.addEventListener('click', (e) => {
+        if (!e.target.closest('.canvas-color-palette')) {
+            canvasColorPalette.classList.remove('expanded');
+        }
+    });
+    
+    function updateCanvasColorButtons() {
+        canvasColorButtons.forEach(btn => {
+            btn.classList.remove('active');
+            if (btn.dataset.color === currentColor) {
+                btn.classList.add('active');
+            }
+        });
+    }
+    
+    canvasColorButtons.forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            currentColor = btn.dataset.color;
+            colorPicker.value = currentColor;
+            updateActiveColorButton();
+            updateCanvasColorButtons();
+            
+            // Auto-close palette after selection
+            canvasColorPalette.classList.remove('expanded');
+            
+            // Switch to pen tool if not already selected
+            if (currentTool !== 'pen') {
+                setActiveTool('pen');
+            }
+        });
+    });
+    
+    // Initialize canvas color buttons
+    updateCanvasColorButtons();
+    
     function updateActiveColorButton() {
         quickColorButtons.forEach(btn => {
             btn.classList.remove('active');
@@ -524,6 +572,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 btn.classList.add('active');
             }
         });
+        updateCanvasColorButtons();
     }
     
     quickColorButtons.forEach(btn => {
