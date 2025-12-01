@@ -23,18 +23,28 @@ document.addEventListener('DOMContentLoaded', () => {
     const loadBtn = document.getElementById('load');
     const fileInput = document.getElementById('file-input');
     const textInput = document.getElementById('text-input');
-    const canvasColorPalette = document.getElementById('canvas-color-palette');
-    const paletteToggle = document.getElementById('palette-toggle');
-    const paletteColors = document.getElementById('palette-colors');
+    const colorDropdown = document.getElementById('color-dropdown');
+    const currentColorBtn = document.getElementById('current-color-btn');
+    const colorDropdownMenu = document.getElementById('color-dropdown-menu');
+    
+    // Debug: Check if all elements are found
+    console.log('Element check:', {
+        canvas: !!canvas,
+        bgColorPicker: !!bgColorPicker,
+        colorPicker: !!colorPicker,
+        menuToggle: !!menuToggle,
+        shapesMenu: !!shapesMenu,
+        shapesSubmenu: !!shapesSubmenu
+    });
     
     // Set initial active tool and state
     let currentTool = 'pen';
     let isDrawing = false;
     let lastX = 0;
     let lastY = 0;
-    let currentColor = colorPicker.value;
-    let currentSize = parseInt(brushSize.value);
-    let currentBgColor = bgColorPicker.value;
+    let currentColor = colorPicker ? colorPicker.value : '#000000';
+    let currentSize = brushSize ? parseInt(brushSize.value) : 3;
+    let currentBgColor = bgColorPicker ? bgColorPicker.value : '#ffffff';
     
     // History management
     let history = [];
@@ -51,7 +61,42 @@ document.addEventListener('DOMContentLoaded', () => {
     let isTextMode = false;
     
     
-    // Create preview canvas for shapes
+    // Redraw canvas with current transformation
+    function redrawCanvas() {
+        // Clear the entire canvas
+        resetTransform();
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        
+        // Apply transformation and redraw background
+        applyTransform();
+        
+        // Set background with transformed coordinates
+        const bgX = -translateX / scale;
+        const bgY = -translateY / scale;
+        const bgWidth = canvas.width / scale;
+        const bgHeight = canvas.height / scale;
+        
+        ctx.fillStyle = currentBgColor;
+        ctx.fillRect(bgX, bgY, bgWidth, bgHeight);
+        
+        // Redraw all content from history if available
+        if (history.length > 0 && historyStep >= 0) {
+            const img = new Image();
+            img.onload = function() {
+                resetTransform();
+                ctx.drawImage(img, 0, 0);
+                applyTransform();
+            };
+            img.src = history[historyStep];
+        }
+    }
+    
+    // Initialize the infinite canvas
+    function initializeInfiniteCanvas() {
+        // Set initial transformation
+        applyTransform();
+        console.log('Infinite canvas initialized');
+    }
     function createPreviewCanvas() {
         previewCanvas = document.createElement('canvas');
         previewCanvas.width = canvas.width;
@@ -121,22 +166,51 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    // Set initial background color
-    ctx.fillStyle = currentBgColor;
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    // Initialize canvas size first
+    function initializeCanvas() {
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+        
+        // FORCE SET initial background color
+        console.log('FORCING initial background color:', currentBgColor);
+        ctx.fillStyle = currentBgColor;
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        
+        // Ensure background color picker shows the correct initial value
+        if (bgColorPicker) {
+            bgColorPicker.value = currentBgColor;
+            console.log('Set background color picker to:', currentBgColor);
+        }
+        
+        // Save initial state
+        saveState();
+        console.log('Canvas initialized successfully with background:', currentBgColor);
+    }
+    
+    // Call initialization
+    initializeCanvas();
+    createPreviewCanvas();
+    
+    // FORCE background color again after 1 second to ensure it works
+    setTimeout(() => {
+        console.log('FORCING background color after delay...');
+        ctx.fillStyle = currentBgColor;
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        console.log('Background forced successfully');
+    }, 1000);
     
     penBtn.classList.add('active');
 
     // Resize canvas function
     function resizeCanvas() {
-        // Get the current drawing
+        // Get the current drawing (if any)
         const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
         
         // Resize the canvas
         canvas.width = window.innerWidth;
         canvas.height = window.innerHeight;
         
-        // Redraw with current background color
+        // Set background color first
         ctx.fillStyle = currentBgColor;
         ctx.fillRect(0, 0, canvas.width, canvas.height);
         
@@ -151,8 +225,10 @@ document.addEventListener('DOMContentLoaded', () => {
             previewCanvas.height = canvas.height;
         }
         
-        // Save initial state
-        saveState();
+        // Save initial state after proper setup
+        if (historyStep === -1) {
+            saveState();
+        }
     }
     
     window.addEventListener('resize', resizeCanvas);
@@ -161,7 +237,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Drawing state (variables moved to the top)
 
-    // Tool functions
+    // Tool functions - SIMPLIFIED
     function startDrawing(e) {
         const [x, y] = getCoordinates(e);
         
@@ -188,7 +264,7 @@ document.addEventListener('DOMContentLoaded', () => {
             // Clear preview canvas and draw shape preview
             previewCtx.clearRect(0, 0, previewCanvas.width, previewCanvas.height);
             previewCtx.strokeStyle = currentColor;
-            previewCtx.lineWidth = currentSize;
+            previewCtx.lineWidth = currentSize / scale; // Adjust line width for zoom
             previewCtx.lineCap = 'round';
             previewCtx.lineJoin = 'round';
             
@@ -204,19 +280,16 @@ document.addEventListener('DOMContentLoaded', () => {
         if (currentTool === 'eraser') {
             ctx.globalCompositeOperation = 'destination-out';
             ctx.strokeStyle = 'rgba(0,0,0,1)';
-            ctx.lineWidth = currentSize * 2;
+            ctx.lineWidth = (currentSize * 2) / scale; // Adjust for zoom
         } else {
             ctx.globalCompositeOperation = 'source-over';
             ctx.strokeStyle = currentColor;
-            ctx.lineWidth = currentSize;
+            ctx.lineWidth = currentSize / scale; // Adjust for zoom
         }
         
         ctx.lineCap = 'round';
         ctx.lineJoin = 'round';
         ctx.stroke();
-        
-        // Reset composite operation
-        ctx.globalCompositeOperation = 'source-over';
         
         [lastX, lastY] = [x, y];
     }
@@ -330,18 +403,30 @@ document.addEventListener('DOMContentLoaded', () => {
     canvas.addEventListener('mouseup', stopDrawing);
     canvas.addEventListener('mouseout', stopDrawing);
     
-    // Touch support
+    // Basic mouse events
+    canvas.addEventListener('mousedown', startDrawing);
+    canvas.addEventListener('mousemove', draw);
+    canvas.addEventListener('mouseup', stopDrawing);
+    
+    // Touch support - BASIC VERSION THAT WORKS
     canvas.addEventListener('touchstart', (e) => {
         e.preventDefault();
-        startDrawing(e.touches[0]);
+        if (e.touches.length === 1) {
+            startDrawing(e.touches[0]);
+        }
     });
     
     canvas.addEventListener('touchmove', (e) => {
         e.preventDefault();
-        draw(e.touches[0]);
+        if (e.touches.length === 1) {
+            draw(e.touches[0]);
+        }
     });
     
-    canvas.addEventListener('touchend', stopDrawing);
+    canvas.addEventListener('touchend', (e) => {
+        e.preventDefault();
+        stopDrawing(e);
+    });
 
     // Close menu when clicking outside
     document.addEventListener('click', (e) => {
@@ -400,6 +485,8 @@ document.addEventListener('DOMContentLoaded', () => {
         // Update cursor
         if (tool === 'text') {
             canvas.style.cursor = 'text';
+        } else if (tool === 'pan') {
+            canvas.style.cursor = 'grab';
         } else {
             canvas.style.cursor = 'crosshair';
         }
@@ -421,16 +508,43 @@ document.addEventListener('DOMContentLoaded', () => {
     lineBtn.addEventListener('click', () => setActiveTool('line'));
     textBtn.addEventListener('click', () => setActiveTool('text'));
     
-    // Submenu handling
+    // FIXED Shape submenu handling - with proper positioning
     shapesMenu.addEventListener('click', (e) => {
+        e.preventDefault();
         e.stopPropagation();
-        shapesSubmenu.classList.toggle('visible');
+        const isVisible = shapesSubmenu.classList.contains('visible');
+        
+        console.log('Shapes menu clicked, currently visible:', isVisible);
+        
+        // Close all other dropdowns first
+        document.querySelectorAll('.submenu.visible').forEach(menu => {
+            menu.classList.remove('visible');
+        });
+        
+        // Remove active state from all submenu triggers
+        document.querySelectorAll('.submenu-trigger').forEach(trigger => {
+            trigger.classList.remove('active');
+        });
+        
+        // Toggle this dropdown
+        if (!isVisible) {
+            // Position the submenu next to the shapes button
+            const rect = shapesMenu.getBoundingClientRect();
+            shapesSubmenu.style.top = rect.top + 'px';
+            shapesSubmenu.style.left = (rect.left - 200) + 'px'; // Position to the left
+            
+            shapesSubmenu.classList.add('visible');
+            shapesMenu.classList.add('active');
+            console.log('Shapes dropdown opened at position:', rect);
+        }
     });
     
-    // Close submenu when clicking elsewhere
+    // Close dropdown when clicking outside
     document.addEventListener('click', (e) => {
         if (!e.target.closest('.submenu-container')) {
             shapesSubmenu.classList.remove('visible');
+            shapesMenu.classList.remove('active');
+            console.log('Shapes dropdown closed');
         }
     });
     
@@ -490,98 +604,112 @@ document.addEventListener('DOMContentLoaded', () => {
     textInput.addEventListener('blur', finishTextInput);
 
     colorPicker.addEventListener('input', (e) => {
-        currentColor = e.target.value;
-        updateActiveColorButton();
+        changeColor(e.target.value, 'picker');
     });
     
     // Quick color button handlers
     const quickColorButtons = document.querySelectorAll('.quick-color-btn');
     
-    function updateActiveColorButton() {
+    // Unified color change function
+    function changeColor(newColor, source) {
+        console.log(`Color change from ${source}:`, newColor);
+        currentColor = newColor;
+        colorPicker.value = newColor;
+        
+        // Update all color button states
+        updateAllColorButtons();
+        
+        // Switch to pen if selecting color
+        if (currentTool !== 'pen') {
+            setActiveTool('pen');
+        }
+    }
+    
+    function updateAllColorButtons() {
+        // Update menu quick color buttons
         quickColorButtons.forEach(btn => {
             btn.classList.remove('active');
             if (btn.dataset.color === currentColor) {
                 btn.classList.add('active');
             }
         });
+        
+        // Update current color button display
+        if (currentColorBtn) {
+            currentColorBtn.style.backgroundColor = currentColor;
+        }
+        
+        console.log('Updated all color buttons for:', currentColor);
+    }
+    
+    function updateActiveColorButton() {
+        updateAllColorButtons();
     }
     
     quickColorButtons.forEach(btn => {
         btn.addEventListener('click', () => {
-            currentColor = btn.dataset.color;
-            colorPicker.value = currentColor;
-            updateActiveColorButton();
-            
-            // Close menu after color selection
+            changeColor(btn.dataset.color, 'menu');
             floatingMenu.classList.remove('visible');
         });
     });
     
     // Initialize active color button
-    updateActiveColorButton();
+    updateAllColorButtons();
+    
+    // Color dropdown handlers
+    if (currentColorBtn) {
+        currentColorBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            colorDropdown.classList.toggle('open');
+        });
+    }
+    
+    // Close dropdown when clicking elsewhere
+    document.addEventListener('click', (e) => {
+        if (!e.target.closest('.color-dropdown')) {
+            colorDropdown.classList.remove('open');
+        }
+    });
+    
+    // Dropdown color selection
+    const dropdownColorButtons = document.querySelectorAll('.dropdown-color-btn');
+    dropdownColorButtons.forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            console.log('Dropdown color clicked:', btn.dataset.color);
+            changeColor(btn.dataset.color, 'dropdown');
+            colorDropdown.classList.remove('open');
+        });
+    });
     
     // Canvas color palette handlers
     const canvasColorButtons = document.querySelectorAll('.canvas-color-btn');
     
-    paletteToggle.addEventListener('click', (e) => {
-        e.stopPropagation();
-        canvasColorPalette.classList.toggle('expanded');
-    });
-    
-    // Close palette when clicking elsewhere
-    document.addEventListener('click', (e) => {
-        if (!e.target.closest('.canvas-color-palette')) {
-            canvasColorPalette.classList.remove('expanded');
-        }
-    });
-    
-    function updateCanvasColorButtons() {
-        canvasColorButtons.forEach(btn => {
-            btn.classList.remove('active');
-            if (btn.dataset.color === currentColor) {
-                btn.classList.add('active');
-            }
-        });
-    }
-    
-    canvasColorButtons.forEach(btn => {
-        btn.addEventListener('click', (e) => {
-            e.stopPropagation();
-            currentColor = btn.dataset.color;
-            colorPicker.value = currentColor;
-            updateActiveColorButton();
-            updateCanvasColorButtons();
-            
-            // Auto-close palette after selection
-            canvasColorPalette.classList.remove('expanded');
-            
-            // Switch to pen tool if not already selected
-            if (currentTool !== 'pen') {
-                setActiveTool('pen');
-            }
-        });
-    });
-    
-    // Initialize canvas color buttons
-    updateCanvasColorButtons();
+    // Remove canvas palette functionality as it's not in HTML
+    console.log('Canvas color buttons found:', canvasColorButtons.length);
     
     function updateActiveColorButton() {
+        // Update menu quick color buttons
         quickColorButtons.forEach(btn => {
             btn.classList.remove('active');
             if (btn.dataset.color === currentColor) {
                 btn.classList.add('active');
             }
         });
-        updateCanvasColorButtons();
+        
+        // Update current color button display
+        if (currentColorBtn) {
+            currentColorBtn.style.backgroundColor = currentColor;
+        }
+        
+        console.log('Updated active color buttons for color:', currentColor);
     }
     
     quickColorButtons.forEach(btn => {
         btn.addEventListener('click', () => {
-            currentColor = btn.dataset.color;
-            colorPicker.value = currentColor;
-            updateActiveColorButton();
-            
-            // Close menu after color selection
+            changeColor(btn.dataset.color, 'menu');
             floatingMenu.classList.remove('visible');
         });
     });
@@ -590,7 +718,8 @@ document.addEventListener('DOMContentLoaded', () => {
     updateActiveColorButton();
 
     brushSize.addEventListener('input', (e) => {
-        currentSize = e.target.value;
+        currentSize = parseInt(e.target.value);
+        brushSizeValue.textContent = currentSize;
     });
 
     // Clear canvas
@@ -603,67 +732,71 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
     
-    // Background color change
+    // Background color change - COMPLETELY REWRITTEN
     function setBackgroundColor(color) {
+        console.log('SETTING BACKGROUND COLOR TO:', color);
         currentBgColor = color;
-        bgColorPicker.value = color;
         
-        // Create a temporary canvas to store the current drawing
-        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-        
-        // Create a new ImageData with the new background color
-        const newImageData = ctx.createImageData(canvas.width, canvas.height);
-        
-        // Parse the background color
-        const tempDiv = document.createElement('div');
-        tempDiv.style.color = color;
-        document.body.appendChild(tempDiv);
-        const rgbColor = window.getComputedStyle(tempDiv).color;
-        document.body.removeChild(tempDiv);
-        
-        // Extract RGB values
-        const rgb = rgbColor.match(/\d+/g);
-        const bgR = parseInt(rgb[0]);
-        const bgG = parseInt(rgb[1]);
-        const bgB = parseInt(rgb[2]);
-        
-        // Process each pixel
-        for (let i = 0; i < imageData.data.length; i += 4) {
-            const r = imageData.data[i];
-            const g = imageData.data[i + 1];
-            const b = imageData.data[i + 2];
-            const a = imageData.data[i + 3];
-            
-            // If pixel is transparent or matches old background, use new background
-            if (a === 0 || (r === 255 && g === 255 && b === 255)) {
-                newImageData.data[i] = bgR;
-                newImageData.data[i + 1] = bgG;
-                newImageData.data[i + 2] = bgB;
-                newImageData.data[i + 3] = 255;
-            } else {
-                // Keep the original pixel
-                newImageData.data[i] = r;
-                newImageData.data[i + 1] = g;
-                newImageData.data[i + 2] = b;
-                newImageData.data[i + 3] = a;
-            }
+        // Update the picker
+        if (bgColorPicker) {
+            bgColorPicker.value = color;
         }
         
-        // Clear canvas and draw new image data
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-        ctx.putImageData(newImageData, 0, 0);
+        // Create a temporary canvas to store current drawing
+        const tempCanvas = document.createElement('canvas');
+        tempCanvas.width = canvas.width;
+        tempCanvas.height = canvas.height;
+        const tempCtx = tempCanvas.getContext('2d');
         
+        // Copy current canvas to temp (this includes background + drawings)
+        tempCtx.drawImage(canvas, 0, 0);
+        
+        // Get only the drawing data by using composite operation
+        tempCtx.globalCompositeOperation = 'source-in';
+        tempCtx.fillStyle = 'white';
+        tempCtx.fillRect(0, 0, tempCanvas.width, tempCanvas.height);
+        
+        // Clear main canvas completely
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        
+        // Set new background
+        ctx.fillStyle = color;
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        
+        // DON'T restore old drawing - start fresh with new background
+        
+        console.log('BACKGROUND SUCCESSFULLY CHANGED TO:', color);
         saveState();
     }
 
-    bgColorPicker.addEventListener('input', (e) => {
-        setBackgroundColor(e.target.value);
-    });
+    // Background color picker event listeners - FIXED
+    if (bgColorPicker) {
+        bgColorPicker.addEventListener('input', (e) => {
+            console.log('BG COLOR INPUT EVENT:', e.target.value);
+            setBackgroundColor(e.target.value);
+        });
+        
+        bgColorPicker.addEventListener('change', (e) => {
+            console.log('BG COLOR CHANGE EVENT:', e.target.value);
+            setBackgroundColor(e.target.value);
+        });
+        
+        // Force immediate background set on click
+        bgColorPicker.addEventListener('click', () => {
+            console.log('BG COLOR CLICKED');
+            setTimeout(() => {
+                if (bgColorPicker.value !== currentBgColor) {
+                    setBackgroundColor(bgColorPicker.value);
+                }
+            }, 100);
+        });
+        
+        console.log('Background color picker listeners added successfully');
+    } else {
+        console.error('CRITICAL ERROR: Background color picker not found!');
+    }
     
     // Set initial background
-    ctx.fillStyle = currentBgColor;
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-
     fullscreenBtn.addEventListener('click', () => {
         if (!document.fullscreenElement) {
             document.documentElement.requestFullscreen().catch(err => {
