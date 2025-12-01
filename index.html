@@ -3,18 +3,22 @@
 <head>
 <meta charset="UTF-8">
 <title>Whiteboard</title>
-<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
 
 <style>
-html,body{margin:0;height:100%;overflow:hidden;background:#ddd;font-family:system-ui;}
-canvas{position:fixed;inset:0;background:white;touch-action:none;}
-.menu-btn{position:fixed;top:10px;right:12px;width:40px;height:40px;border-radius:50%;border:none;
-background:black;color:white;font-size:20px;z-index:10;}
-.menu{position:fixed;top:60px;right:12px;background:white;border-radius:12px;padding:10px;
-box-shadow:0 4px 12px rgba(0,0,0,.2);width:180px;display:none;z-index:10;}
-.menu label{font-size:13px;display:block;margin-bottom:8px;}
-.menu input,.menu select,.menu button{width:100%;margin-top:4px;}
-.menu button{padding:6px;}
+html,body{margin:0;height:100%;overflow:hidden;background:#ddd;font-family:system-ui}
+canvas{position:fixed;inset:0;background:white;touch-action:none}
+.menu-btn{
+position:fixed;top:10px;right:12px;width:40px;height:40px;
+border-radius:50%;border:none;background:black;color:white;
+font-size:20px;z-index:10}
+.menu{
+position:fixed;top:60px;right:12px;background:white;border-radius:12px;
+padding:10px;box-shadow:0 4px 12px rgba(0,0,0,.2);
+width:190px;display:none;z-index:10}
+.menu label{font-size:13px;display:block;margin-bottom:7px}
+.menu input,.menu select,.menu button{width:100%;margin-top:4px}
+.menu button{padding:6px}
 </style>
 </head>
 
@@ -23,10 +27,23 @@ box-shadow:0 4px 12px rgba(0,0,0,.2);width:180px;display:none;z-index:10;}
 <button class="menu-btn">⋮</button>
 
 <div class="menu">
-<label>Tool <select id="tool"><option value="pen">Pen</option><option value="eraser">Eraser</option></select></label>
-<label>Pen Color <input type="color" id="color" value="#000000"></label>
-<label>Size <input type="range" id="size" min="2" max="20" value="4"></label>
-<label>Canvas Color <input type="color" id="bg" value="#ffffff"></label>
+<label>Tool
+<select id="tool">
+<option value="pen">Pen</option>
+<option value="eraser">Eraser</option>
+</select>
+</label>
+
+<label>Pen Color
+<input type="color" id="color" value="#000000"></label>
+
+<label>Pen Size
+<input type="range" id="size" min="2" max="20" value="4"></label>
+
+<label>Canvas Color
+<input type="color" id="bg" value="#ffffff"></label>
+
+<button id="save">Save Image</button>
 <button id="fullscreen">Fullscreen</button>
 <button id="clear">Clear</button>
 </div>
@@ -35,113 +52,150 @@ box-shadow:0 4px 12px rgba(0,0,0,.2);width:180px;display:none;z-index:10;}
 
 <script>
 (()=>{
-const c=document.getElementById("board"),x=c.getContext("2d");
-const menuBtn=document.querySelector(".menu-btn"),menu=document.querySelector(".menu");
-menuBtn.onclick=()=>menu.style.display=menu.style.display==="block"?"none":"block";
+const c=document.getElementById("board"),ctx=c.getContext("2d")
+const menuBtn=document.querySelector(".menu-btn"),menu=document.querySelector(".menu")
+menuBtn.onclick=()=>menu.style.display=menu.style.display==="block"?"none":"block"
 
-const tool=document.getElementById("tool"),color=document.getElementById("color"),
-size=document.getElementById("size"),bg=document.getElementById("bg"),
-clearBtn=document.getElementById("clear"),fsBtn=document.getElementById("fullscreen");
+const tool=colorVal("tool"), color=colorVal("color"),
+size=colorVal("size"), bg=colorVal("bg")
+const saveBtn=colorVal("save"), clearBtn=colorVal("clear"), fs=colorVal("fullscreen")
 
-let strokes=[],cur=null;
-let panX=0,panY=0,scale=1;
-let touches=new Map(),drawId=null,isPan=false;
-let pinchStartDist=0,scaleStart=1;
+function colorVal(id){return document.getElementById(id)}
 
-let lastTap=0,doublePan=false,dpStart={x:0,y:0},panStart={x:0,y:0};
+let strokes=[],cur=null
+let panX=0,panY=0,scale=1
+let pointers=new Map(),drawId=null
+let pinchDist=0,scaleStart=1,isPinch=false
 
-function resize(){c.width=innerWidth;c.height=innerHeight;draw();}
-window.onresize=resize;resize();
-bg.oninput=()=>c.style.background=bg.value;
+let lastTap=0,doublePan=false,dp={x:0,y:0},panStart={x:0,y:0}
 
-function wpos(e){
-const r=c.getBoundingClientRect();
-return{x:(e.clientX-r.left-panX)/scale,
-       y:(e.clientY-r.top-panY)/scale};
-}
+function resize(){c.width=innerWidth;c.height=innerHeight;draw()}
+window.addEventListener("resize",resize) ; resize()
+
+bg.oninput=()=>c.style.background=bg.value
+
+function world(e){
+const r=c.getBoundingClientRect()
+return{
+x:(e.clientX-r.left-panX)/scale,
+y:(e.clientY-r.top-panY)/scale
+}}
 
 function draw(){
-x.setTransform(scale,0,0,scale,panX,panY);
-x.clearRect(-panX/scale,-panY/scale,c.width/scale,c.height/scale);
+ctx.setTransform(scale,0,0,scale,panX,panY)
+ctx.clearRect(-panX/scale,-panY/scale,c.width/scale,c.height/scale)
 
 for(const s of strokes){
-x.beginPath();x.lineWidth=s.size;
-x.lineCap="round";
-x.strokeStyle=s.color;
-x.globalCompositeOperation=s.tool==="eraser"?"destination-out":"source-over";
-x.moveTo(s.points[0].x,s.points[0].y);
-for(const p of s.points)x.lineTo(p.x,p.y);
-x.stroke();
+ctx.beginPath()
+ctx.lineWidth=s.size
+ctx.lineCap="round"
+ctx.strokeStyle=s.color
+ctx.globalCompositeOperation = s.tool==="eraser"?"destination-out":"source-over"
+ctx.moveTo(s.points[0].x,s.points[0].y)
+for(const p of s.points)ctx.lineTo(p.x,p.y)
+ctx.stroke()
 }
-x.setTransform(1,0,0,1,0,0);
-x.globalCompositeOperation="source-over";
+ctx.setTransform(1,0,0,1,0,0)
+ctx.globalCompositeOperation="source-over"
 }
 
-function dist(a,b){return Math.hypot(a.x-b.x,a.y-b.y);}
+function dist(a,b){return Math.hypot(a.x-b.x,a.y-b.y)}
 
 c.onpointerdown=e=>{
-touches.set(e.pointerId,{x:e.clientX,y:e.clientY});
+pointers.set(e.pointerId,{x:e.clientX,y:e.clientY})
 
-let now=Date.now();
-if(now-lastTap<300&&touches.size===1){
- doublePan=true; drawId=null;
- dpStart={x:e.clientX,y:e.clientY};
- panStart={x:panX,y:panY};
+let now=Date.now()
+if(now-lastTap<300 && pointers.size===1){
+doublePan=true
+panStart={x:panX,y:panY}
+dp={x:e.clientX,y:e.clientY}
+drawId=null
 }
-lastTap=now;
+lastTap=now
 
-if(touches.size===2){
- isPan=true;
- let t=[...touches.values()];
- pinchStartDist=dist(t[0],t[1]);
- scaleStart=scale;
- drawId=null;
+if(pointers.size===2){
+isPinch=true
+const p=[...pointers.values()]
+pinchDist=dist(p[0],p[1])
+scaleStart=scale
+drawId=null
 }
 else if(!doublePan){
- drawId=e.pointerId;
- let p=wpos(e);
- cur={tool:tool.value,color:color.value,size:+size.value,points:[p]};
- strokes.push(cur);
- draw();
+drawId=e.pointerId
+const p=world(e)
+cur={tool:tool.value,color:color.value,size:+size.value,points:[p]}
+strokes.push(cur)
+draw()
 }
-};
+}
 
 c.onpointermove=e=>{
-if(!touches.has(e.pointerId))return;
-touches.set(e.pointerId,{x:e.clientX,y:e.clientY});
+if(!pointers.has(e.pointerId))return
+pointers.set(e.pointerId,{x:e.clientX,y:e.clientY})
 
 if(doublePan){
- panX=panStart.x+(e.clientX-dpStart.x);
- panY=panStart.y+(e.clientY-dpStart.y);
- draw(); return;
+panX=panStart.x+(e.clientX-dp.x)
+panY=panStart.y+(e.clientY-dp.y)
+draw();return
 }
 
-if(isPan&&touches.size===2){
- let t=[...touches.values()];
- let d=dist(t[0],t[1]);
- scale=Math.min(4,Math.max(.3,scaleStart*(d/pinchStartDist)));
- draw(); return;
+if(isPinch && pointers.size===2){
+const p=[...pointers.values()]
+const d=dist(p[0],p[1])
+scale=Math.min(4,Math.max(.3,scaleStart*(d/pinchDist)))
+draw();return
 }
 
-if(drawId===e.pointerId&&cur){
- cur.points.push(wpos(e));
- draw();
+if(drawId===e.pointerId && cur){
+cur.points.push(world(e))
+draw()
 }
-};
+}
 
-c.onpointerup=e=>{touches.delete(e.pointerId);doublePan=false;if(touches.size<2)isPan=false;drawId=null;}
-c.onpointercancel=c.onpointerup;
+customEnd = e =>{
+pointers.delete(e.pointerId)
+doublePan=false
+if(pointers.size<2)isPinch=false
+drawId=null
+}
+;["pointerup","pointerleave","pointercancel","pointerout"].forEach(i=>c.addEventListener(i,customEnd))
 
-clearBtn.onclick=()=>{strokes=[];draw();};
+clearBtn.onclick=()=>{strokes=[];draw()}
 
-fsBtn.onclick=()=>{
- if(!document.fullscreenElement)document.documentElement.requestFullscreen();
- else document.exitFullscreen();
-};
-document.onfullscreenchange=resize;
-c.oncontextmenu=e=>e.preventDefault();
+saveBtn.onclick=()=>{
+const temp=document.createElement("canvas")
+temp.width=c.width
+temp.height=c.height
+const t=temp.getContext("2d")
+t.fillStyle=bg.value
+t.fillRect(0,0,temp.width,temp.height)
 
-})();
+t.setTransform(scale,0,0,scale,panX,panY)
+for(const s of strokes){
+t.beginPath()
+t.lineWidth=s.size
+t.lineCap="round"
+t.strokeStyle=s.color
+t.globalCompositeOperation=s.tool==="eraser"?"destination-out":"source-over"
+t.moveTo(s.points[0].x,s.points[0].y)
+for(const p of s.points)t.lineTo(p.x,p.y)
+t.stroke()
+}
+
+const link=document.createElement("a")
+link.download="whiteboard.png"
+link.href=temp.toDataURL()
+link.click()
+}
+
+fs.onclick=()=>{
+if(!document.fullscreenElement)document.documentElement.requestFullscreen()
+else document.exitFullscreen()
+}
+document.addEventListener("fullscreenchange",resize)
+
+c.oncontextmenu=e=>e.preventDefault()
+})()
 </script>
 </body>
 </html>
